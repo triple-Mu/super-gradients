@@ -197,6 +197,8 @@ class NDFLHeads(BaseDetectionModule, SupportsReplaceNumClasses):
             self.stride_tensor = stride_tensor
 
     def forward(self, feats: Tuple[Tensor, ...]) -> Tuple[Tuple[Tensor, Tensor], Tuple[Tensor, ...]]:
+        if hasattr(self, 'export'):
+            return self.forward_export(feats)
         feats = feats[: self.num_heads]
         cls_score_list, reg_distri_list, reg_dist_reduced_list = [], [], []
 
@@ -275,3 +277,15 @@ class NDFLHeads(BaseDetectionModule, SupportsReplaceNumClasses):
         anchor_points = torch.cat(anchor_points)
         stride_tensor = torch.cat(stride_tensor)
         return anchor_points, stride_tensor
+
+
+    def forward_export(self, feats: Tuple[Tensor, ...]) -> Tuple[Tensor, ...]:
+        feats = feats[: self.num_heads]
+        results = []
+        for i, feat in enumerate(feats):
+            reg_distri, cls_logit = getattr(self, f"head{i + 1}")(feat)
+            reg_distri = reg_distri.permute(0, 2, 3, 1).contiguous()
+            cls_logit = cls_logit.permute(0, 2, 3, 1).contiguous()
+            cls_logit = cls_logit.sigmoid()
+            results.append(torch.cat([cls_logit, reg_distri], dim=-1))
+        return tuple(results)
